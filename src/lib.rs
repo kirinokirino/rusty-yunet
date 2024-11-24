@@ -2,7 +2,6 @@
 
 use glam::Vec2;
 use serde::Serialize;
-use std::path::Path;
 use thiserror::Error;
 
 mod rect;
@@ -12,8 +11,6 @@ use rect::Rect;
 pub enum YuNetError {
     #[error("Invalid input file")]
     InvalidFile,
-    #[error("Image error")]
-    ImageError(#[from] image::ImageError),
     #[error("Face detection failed")]
     FaceDetectionFailed,
 }
@@ -169,9 +166,6 @@ mod tests {
             image::GenericImageView::height(&image) as usize,
         )
         .unwrap();
-        for face in faces {
-            println!("{face:?}");
-        }
         assert_eq!(2, faces.len());
     }
 }
