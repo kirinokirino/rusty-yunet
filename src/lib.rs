@@ -1,37 +1,12 @@
 #![warn(clippy::clone_on_ref_ptr, clippy::mod_module_files, clippy::todo)]
 
-use image::{buffer::ConvertBuffer, open, Bgr, ImageBuffer};
+use glam::Vec2;
 use serde::Serialize;
 use std::path::Path;
 use thiserror::Error;
 
 mod rect;
 use rect::Rect;
-
-#[cxx::bridge]
-mod ffi {
-    // Shared type visible from both C++ and Rust
-    #[derive(Debug)]
-    struct BridgeFace {
-        score: f32,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-        lm: [i32; 10],
-    }
-
-    unsafe extern "C++" {
-        include!("rusty-yunet/src/bridge_wrapper.h");
-
-        unsafe fn wrapper_detect_faces(
-            rgb_image_data: *const u8,
-            width: i32,
-            height: i32,
-            step: i32,
-        ) -> Vec<BridgeFace>;
-    }
-}
 
 #[derive(Error, Debug)]
 pub enum YuNetError {
@@ -49,22 +24,22 @@ pub enum YuNetError {
 /// Note that landmarks may occur outside of screen coordinates, as
 /// YuNet can extrapolate their position from what's actually visible.
 #[derive(Debug, Clone, Serialize)]
-pub struct FaceLandmarks<T> {
-    pub right_eye: (T, T),
-    pub left_eye: (T, T),
-    pub nose: (T, T),
-    pub mouth_right: (T, T),
-    pub mouth_left: (T, T),
+pub struct FaceLandmarks {
+    pub right_eye: Vec2,
+    pub left_eye: Vec2,
+    pub nose: Vec2,
+    pub mouth_right: Vec2,
+    pub mouth_left: Vec2,
 }
 
-impl FaceLandmarks<i32> {
+impl FaceLandmarks {
     fn from_yunet_landmark_array(landmarks: &[i32; 10]) -> Self {
         Self {
-            right_eye: (landmarks[0], landmarks[1]),
-            left_eye: (landmarks[2], landmarks[3]),
-            nose: (landmarks[4], landmarks[5]),
-            mouth_right: (landmarks[6], landmarks[7]),
-            mouth_left: (landmarks[8], landmarks[9]),
+            right_eye: Vec2::new(landmarks[0] as f32, landmarks[1] as f32),
+            left_eye: Vec2::new(landmarks[2] as f32, landmarks[3] as f32),
+            nose: Vec2::new(landmarks[4] as f32, landmarks[5] as f32),
+            mouth_right: Vec2::new(landmarks[6] as f32, landmarks[7] as f32),
+            mouth_left: Vec2::new(landmarks[8] as f32, landmarks[9] as f32),
         }
     }
 }
@@ -77,9 +52,9 @@ pub struct Face {
     /// of screen coordinates.
     rectangle: Rect,
     /// The resolution of the image in which this face was detected (width, height).
-    detection_dimensions: (u16, u16),
+    detection_dimensions: (usize, usize),
     /// Coordinates of five face landmarks.
-    landmarks: FaceLandmarks<i32>,
+    landmarks: FaceLandmarks,
 }
 
 impl Face {
@@ -87,7 +62,7 @@ impl Face {
     /// negative dimensions, rarely.
     fn from_yunet_bridge_face(
         face_rect: &ffi::BridgeFace,
-        detection_dimensions: (u16, u16),
+        detection_dimensions: (usize, usize),
     ) -> Self {
         Self {
             confidence: face_rect.score,
@@ -129,46 +104,15 @@ impl Face {
     }
 
     /// Coordinates of five face landmarks.
-    pub fn landmarks(&self) -> &FaceLandmarks<i32> {
+    pub fn landmarks(&self) -> &FaceLandmarks {
         &self.landmarks
-    }
-
-    /// Coordinates of five face landmarks in normalized 0..1 coordinates.
-    pub fn normalized_landmarks(&self) -> FaceLandmarks<f32> {
-        FaceLandmarks {
-            right_eye: (
-                self.landmarks.right_eye.0 as f32 / self.detection_dimensions.0 as f32,
-                self.landmarks.right_eye.1 as f32 / self.detection_dimensions.1 as f32,
-            ),
-            left_eye: (
-                self.landmarks.left_eye.0 as f32 / self.detection_dimensions.0 as f32,
-                self.landmarks.left_eye.1 as f32 / self.detection_dimensions.1 as f32,
-            ),
-            nose: (
-                self.landmarks.nose.0 as f32 / self.detection_dimensions.0 as f32,
-                self.landmarks.nose.1 as f32 / self.detection_dimensions.1 as f32,
-            ),
-            mouth_right: (
-                self.landmarks.mouth_right.0 as f32 / self.detection_dimensions.0 as f32,
-                self.landmarks.mouth_right.1 as f32 / self.detection_dimensions.1 as f32,
-            ),
-            mouth_left: (
-                self.landmarks.mouth_left.0 as f32 / self.detection_dimensions.0 as f32,
-                self.landmarks.mouth_left.1 as f32 / self.detection_dimensions.1 as f32,
-            ),
-        }
     }
 }
 
-pub fn detect_faces<T: ConvertBuffer<ImageBuffer<Bgr<u8>, Vec<u8>>>>(
-    image_buffer: &T,
-) -> Result<Vec<Face>, YuNetError> {
-    let image_buffer = image_buffer.convert();
-    let (width, height) = (image_buffer.width() as u16, image_buffer.height() as u16);
-
+pub fn detect_faces(bytes: &[u8], width: usize, height: usize) -> Result<Vec<Face>, YuNetError> {
     let faces = unsafe {
         crate::ffi::wrapper_detect_faces(
-            image_buffer.as_ptr(),
+            bytes.as_ptr(),
             width as i32,
             height as i32,
             3 * width as i32,
@@ -180,9 +124,29 @@ pub fn detect_faces<T: ConvertBuffer<ImageBuffer<Bgr<u8>, Vec<u8>>>>(
         .collect())
 }
 
-pub fn detect_faces_from_file(filename: impl AsRef<Path>) -> Result<Vec<Face>, YuNetError> {
-    let image_buffer = open(&filename)?.into_bgr8();
-    detect_faces(&image_buffer)
+#[cxx::bridge]
+mod ffi {
+    // Shared type visible from both C++ and Rust
+    #[derive(Debug)]
+    struct BridgeFace {
+        score: f32,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        lm: [i32; 10],
+    }
+
+    unsafe extern "C++" {
+        include!("rusty-yunet/src/bridge_wrapper.h");
+
+        unsafe fn wrapper_detect_faces(
+            rgb_image_data: *const u8,
+            width: i32,
+            height: i32,
+            step: i32,
+        ) -> Vec<BridgeFace>;
+    }
 }
 
 #[cfg(test)]
@@ -197,6 +161,17 @@ mod tests {
         // installation. Detecting the smallest face is very unrealistic and unnecessary.
         //
         // Detecting two faces with this test at this resolution can be considered a good result.
-        assert_eq!(2, detect_faces_from_file("sample.jpg").unwrap().len());
+        let image = image::open("sample.jpg").unwrap();
+        let bytes = image.to_bgr8().to_vec();
+        let faces = detect_faces(
+            &bytes,
+            image::GenericImageView::width(&image) as usize,
+            image::GenericImageView::height(&image) as usize,
+        )
+        .unwrap();
+        for face in faces {
+            println!("{face:?}");
+        }
+        assert_eq!(2, faces.len());
     }
 }
