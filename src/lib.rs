@@ -4,7 +4,9 @@ use image::{buffer::ConvertBuffer, open, Bgr, ImageBuffer};
 use serde::Serialize;
 use std::path::Path;
 use thiserror::Error;
-use tonari_math::Rect;
+
+mod rect;
+use rect::Rect;
 
 #[cxx::bridge]
 mod ffi {
@@ -73,7 +75,7 @@ pub struct Face {
     confidence: f32,
     /// Location of the face on absolute pixel coordinates. This may fall outside
     /// of screen coordinates.
-    rectangle: Rect<i32>,
+    rectangle: Rect,
     /// The resolution of the image in which this face was detected (width, height).
     detection_dimensions: (u16, u16),
     /// Coordinates of five face landmarks.
@@ -89,7 +91,12 @@ impl Face {
     ) -> Self {
         Self {
             confidence: face_rect.score,
-            rectangle: Rect::with_size(face_rect.x, face_rect.y, face_rect.w, face_rect.h),
+            rectangle: Rect::with_size(
+                face_rect.x as f32,
+                face_rect.y as f32,
+                face_rect.w as f32,
+                face_rect.h as f32,
+            ),
             landmarks: FaceLandmarks::from_yunet_landmark_array(&face_rect.lm),
             detection_dimensions,
         }
@@ -101,23 +108,23 @@ impl Face {
     }
 
     /// Face rectangle in absolute pixel coordinates.
-    pub fn rectangle(&self) -> Rect<i32> {
+    pub fn rectangle(&self) -> Rect {
         self.rectangle
     }
 
     /// The minimum of normalized width and height.
     pub fn size(&self) -> f32 {
         let rect = self.normalized_rectangle();
-        rect.width().min(rect.height())
+        rect.w.min(rect.h)
     }
 
     /// Face rectangle in normalized 0..1 coordinates.
-    pub fn normalized_rectangle(&self) -> Rect<f32> {
+    pub fn normalized_rectangle(&self) -> Rect {
         Rect::with_size(
-            self.rectangle.left() as f32 / self.detection_dimensions.0 as f32,
-            self.rectangle.top() as f32 / self.detection_dimensions.1 as f32,
-            self.rectangle.width() as f32 / self.detection_dimensions.0 as f32,
-            self.rectangle.height() as f32 / self.detection_dimensions.1 as f32,
+            self.rectangle.x / self.detection_dimensions.0 as f32,
+            self.rectangle.y / self.detection_dimensions.1 as f32,
+            self.rectangle.w / self.detection_dimensions.0 as f32,
+            self.rectangle.h / self.detection_dimensions.1 as f32,
         )
     }
 
@@ -167,7 +174,10 @@ pub fn detect_faces<T: ConvertBuffer<ImageBuffer<Bgr<u8>, Vec<u8>>>>(
             3 * width as i32,
         )
     };
-    Ok(faces.into_iter().map(|f| Face::from_yunet_bridge_face(&f, (width, height))).collect())
+    Ok(faces
+        .into_iter()
+        .map(|f| Face::from_yunet_bridge_face(&f, (width, height)))
+        .collect())
 }
 
 pub fn detect_faces_from_file(filename: impl AsRef<Path>) -> Result<Vec<Face>, YuNetError> {
