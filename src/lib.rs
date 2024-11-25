@@ -1,6 +1,7 @@
 #![warn(clippy::clone_on_ref_ptr, clippy::mod_module_files, clippy::todo)]
 
 use glam::Vec2;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 use thiserror::Error;
 
@@ -20,7 +21,8 @@ pub enum YuNetError {
 ///
 /// Note that landmarks may occur outside of screen coordinates, as
 /// YuNet can extrapolate their position from what's actually visible.
-#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[derive(Debug, Clone)]
 pub struct FaceLandmarks {
     pub right_eye: Vec2,
     pub left_eye: Vec2,
@@ -41,7 +43,8 @@ impl FaceLandmarks {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[derive(Debug, Clone)]
 pub struct Face {
     /// How confident (0..1) YuNet is that the rectangle represents a valid face.
     confidence: f32,

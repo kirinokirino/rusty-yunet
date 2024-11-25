@@ -1,7 +1,9 @@
 use glam::Vec2;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[derive(Debug, Clone, Copy)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
