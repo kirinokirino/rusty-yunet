@@ -1,6 +1,6 @@
 [package]
 name = "rusty-yunet"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -8,7 +8,7 @@ cxx = "1.0"
 log = "0.4"
 serde = { version = "1", features = ["derive"], optional = true  }
 thiserror = "1.0"
-glam = { version =  "0.29.2", features = ["serde"] }
+glam = { version =  "0.29.2", default-features = false, features = [] } 
 
 [build-dependencies]
 cxx-build = "1.0"
@@ -18,4 +18,4 @@ image = "0.23"
 
 [features]
 default = []  # Define an empty default feature set
-serde_support = ["serde"]  # Define a feature to enable serde
+serde_support = ["serde", "glam/serde"]  # Define a feature to enable serde
